@@ -347,9 +347,53 @@ def shelf_from_home(raw: Any, track_limit: int = 12) -> dict | None:
     return {"title": title or "Home", "tracks": tracks}
 
 
+def _friendly_error(exc: Exception, what: str) -> str:
+    """Turn a ytmusicapi failure into something the player can display."""
+    text = str(exc).strip() or exc.__class__.__name__
+    if isinstance(exc, KeyError):
+        # A parse failure means the response was not the signed-in shape.
+        return (f"YouTube did not return {what}. The saved session may have "
+                f"expired — sign in again from the player.")
+    if "twoColumnBrowseResultsRenderer" in text or "Unable to find" in text:
+        return (f"YouTube did not return {what}. The saved session may have "
+                f"expired — sign in again from the player.")
+    return f"Could not load {what}: {text.splitlines()[0][:200]}"
+
+
 class Catalog:
     def __init__(self, ytmusic):
         self.yt = ytmusic
+        # Unknown until verify_session() runs. Library calls refuse to answer
+        # while this is False, so a signed-out session can never masquerade as
+        # an empty library.
+        self.session_valid = False
+        self.session_error = ""
+
+    def verify_session(self) -> tuple[bool, str, str]:
+        """Confirm the saved headers are a live YouTube Music session.
+
+        Returns (valid, account_name, error). The library endpoints are
+        useless as a probe: for an anonymous request YouTube answers with an
+        empty list rather than an error, so "no playlists" and "signed out"
+        are indistinguishable. account_info is authenticated-only, so a
+        KeyError or server error there means the session is dead.
+        """
+        try:
+            info = self.yt.get_account_info() or {}
+        except Exception as exc:
+            self.session_valid = False
+            self.session_error = (
+                "The saved YouTube Music session is no longer valid. "
+                "Sign in again from the player.")
+            return False, "", self.session_error
+        name = _text(
+            info.get("accountName")
+            or info.get("name")
+            or (info.get("account") or {}).get("name")
+        )
+        self.session_valid = True
+        self.session_error = ""
+        return True, name, ""
 
     def account(self) -> dict:
         try:
@@ -362,6 +406,24 @@ class Catalog:
             or (info.get("account") or {}).get("name")
         )
         return {"name": name, "raw": info}
+
+    def _library(self, fetch, what: str):
+        """Run a personal-library call, failing loudly.
+
+        These endpoints are the only ones that require a real session. When it
+        is missing YouTube returns an empty list with no error, which used to
+        be swallowed and shown as an empty library. Raising instead makes the
+        difference visible.
+        """
+        if not self.session_valid:
+            raise CatalogError(
+                self.session_error
+                or f"YouTube Music is not signed in, so {what} cannot be loaded."
+            )
+        try:
+            return fetch()
+        except Exception as exc:
+            raise CatalogError(_friendly_error(exc, what)) from exc
 
     def home(self, limit: int = 6) -> list[dict]:
         try:
@@ -378,45 +440,27 @@ class Catalog:
         return out
 
     def history(self, limit: int = 40) -> list[dict]:
-        try:
-            raw = self.yt.get_history()
-        except Exception:
-            raw = []
+        raw = self._library(lambda: self.yt.get_history(), "your listening history")
         return map_items(raw, limit=limit)
 
     def liked(self, limit: int = 50) -> list[dict]:
-        try:
-            raw = self.yt.get_liked_songs(limit=limit)
-        except Exception:
-            raw = {}
+        raw = self._library(lambda: self.yt.get_liked_songs(limit=limit), "your liked songs")
         return map_items(raw, limit=limit)
 
     def playlists(self, limit: int = 50) -> list[dict]:
-        try:
-            raw = self.yt.get_library_playlists(limit=limit)
-        except Exception:
-            raw = []
+        raw = self._library(lambda: self.yt.get_library_playlists(limit=limit), "your playlists")
         return [item for item in map_items(raw, limit=limit) if item.get("type") == "playlist" or item.get("kind") == "context"]
 
     def library_songs(self, limit: int = 50) -> list[dict]:
-        try:
-            raw = self.yt.get_library_songs(limit=limit)
-        except Exception:
-            raw = []
+        raw = self._library(lambda: self.yt.get_library_songs(limit=limit), "your library songs")
         return map_items(raw, limit=limit)
 
     def library_albums(self, limit: int = 50) -> list[dict]:
-        try:
-            raw = self.yt.get_library_albums(limit=limit)
-        except Exception:
-            raw = []
+        raw = self._library(lambda: self.yt.get_library_albums(limit=limit), "your library albums")
         return map_items(raw, limit=limit)
 
     def library_artists(self, limit: int = 50) -> list[dict]:
-        try:
-            raw = self.yt.get_library_artists(limit=limit)
-        except Exception:
-            raw = []
+        raw = self._library(lambda: self.yt.get_library_artists(limit=limit), "your followed artists")
         return map_items(raw, limit=limit)
 
     def search(self, query: str, filter_name: str = "", limit: int = 24) -> dict:
@@ -580,4 +624,4 @@ class Catalog:
 
 
 class CatalogError(RuntimeError):
-    pass
+    """A catalog operation could not be completed; the message is user-facing."""

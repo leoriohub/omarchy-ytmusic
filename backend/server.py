@@ -89,23 +89,25 @@ class Backend:
 
         path = auth.resolve_auth_path(str(self.auth_path) if self.auth_path else None)
         self.auth_path = path
+        self.error = ""
         try:
             if auth.auth_available(path):
                 self.catalog = Catalog(YTMusic(str(path)))
-                self.signed_in = True
                 cookies = auth.export_cookies(path)
                 self.player.resolver.set_cookies(cookies)
-                try:
-                    info = self.catalog.account()
-                    self.account_name = info.get("name") or ""
-                except Exception:
-                    self.account_name = ""
+                # Having the file is not the same as having a live session.
+                # Ask YouTube; the library endpoints cannot tell us because
+                # they answer an anonymous request with an empty list.
+                valid, name, _err = self.catalog.verify_session()
+                self.signed_in = bool(valid)
+                self.account_name = name if valid else ""
+                if not valid:
+                    self.error = self.catalog.session_error
             else:
                 self.catalog = Catalog(YTMusic())
                 self.signed_in = False
                 self.account_name = ""
             self.lifecycle = "ready"
-            self.error = ""
         except Exception as exc:
             try:
                 self.catalog = Catalog(YTMusic())

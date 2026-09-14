@@ -563,11 +563,11 @@ Item {
       root.homeShelves = result.home || []
     })
     command("browse", { view: "history" }, "", function(ok, result) {
-      if (ok && result) root.history = result.items || []
+      root.history = ok && result ? (result.items || []) : []
     })
     if (accountConnected) {
       command("browse", { view: "liked" }, "", function(ok, result) {
-        if (ok && result) root.liked = result.items || []
+        root.liked = ok && result ? (result.items || []) : []
       })
       loadPlaylists()
     }
@@ -580,10 +580,17 @@ Item {
       : (libraryType === "artists" ? "library_artists" : "library_songs")
     command("browse", { view: view }, "", function(ok, result) {
       root.libraryLoading = false
-      if (!ok || !result) return
-      if (root.libraryType === "albums") root.libraryAlbums = result.items || []
-      else if (root.libraryType === "artists") root.libraryArtists = result.items || []
-      else root.librarySongs = result.items || []
+      if (!ok) {
+        if (root.libraryType === "albums") root.libraryAlbums = []
+        else if (root.libraryType === "artists") root.libraryArtists = []
+        else root.librarySongs = []
+        if (!root.lastError) root.fail("Could not load your library")
+        return
+      }
+      var items = (result && result.items) || []
+      if (root.libraryType === "albums") root.libraryAlbums = items
+      else if (root.libraryType === "artists") root.libraryArtists = items
+      else root.librarySongs = items
     })
   }
 
@@ -597,7 +604,15 @@ Item {
     playlistsLoading = true
     command("browse", { view: "playlists" }, "", function(ok, result) {
       root.playlistsLoading = false
-      if (ok && result) root.playlists = result.items || []
+      if (!ok) {
+        // Backend reports a dead session or a catalog failure here. Without
+        // this the list just stayed empty and looked like an empty account.
+        root.playlists = []
+        if (!root.lastError)
+          root.fail("Could not load your playlists")
+        return
+      }
+      root.playlists = (result && result.items) || []
     })
   }
 

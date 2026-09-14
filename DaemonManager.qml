@@ -61,12 +61,32 @@ Item {
     setupPlayback()
   }
 
+  // How long a setup run may take before it is treated as hung. Installing the
+  // venv and its dependencies is a pip round trip, so this is generous; the
+  // point is only to guarantee the flag can never latch forever.
+  readonly property int setupTimeoutMs: 300000
+
   function setupPlayback() {
     if (setupBusy || !pluginDir) return
     lastError = ""
     setupBusy = true
     setupCommand.command = [pluginDir + "/scripts/setup.sh"]
     setupCommand.running = true
+    setupTimeout.restart()
+  }
+
+  // `setupBusy` used to be cleared only in setupCommand.onExited. If that
+  // handler never ran — the shell restarted mid-setup, the process was killed,
+  // or Quickshell dropped the child — the flag latched true and every later
+  // call returned early on the guard above. The UI then showed "Working…"
+  // forever with no error and no way to retry short of restarting the shell.
+  function cancelSetup(reason) {
+    if (!setupBusy) return
+    if (setupCommand.running) setupCommand.running = false
+    setupBusy = false
+    setupTimeout.stop()
+    lastError = root.safeError(reason || "Playback setup did not finish")
+    root.setupFailed(root.lastError)
   }
 
   function refreshStatus() {
@@ -140,6 +160,7 @@ Item {
     stderr: StdioCollector { }
     onExited: function(code) {
       root.setupBusy = false
+      root.setupTimeout.stop()
       if (Number(code) === 0) {
         root.lastError = ""
         root.checkRequirements()
@@ -183,6 +204,14 @@ Item {
     running: root.playbackReady
     repeat: true
     onTriggered: root.refreshStatus()
+  }
+
+  Timer {
+    id: setupTimeout
+    interval: root.setupTimeoutMs
+    repeat: false
+    onTriggered: root.cancelSetup("Playback setup timed out after "
+      + Math.round(root.setupTimeoutMs / 60000) + " minutes")
   }
 
   onPluginDirChanged: if (pluginDir) checkRequirements()
