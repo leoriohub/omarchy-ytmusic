@@ -24,12 +24,28 @@ CHROME_PBKDF2_ROUNDS = 1
 CHROME_KEY_LEN = 16
 CHROME_HASH_PREFIX_LEN = 32
 
-# Chromium stores the OSCrypt password in libsecret under application=<browser>.
-# Omarchy Chromium is launched with --password-store=gnome-libsecret.
+# Chromium-family browsers store the OSCrypt password in libsecret under
+# application=<keyring>. Omarchy launches them with
+# --password-store=gnome-libsecret, so the key is readable without prompting.
+#
+# The first element is the libsecret application name, NOT the product name:
+# every Brave channel (Stable/Beta/Nightly) and the rebranded Brave Origin
+# store their key under `application=brave`, which is why they share one
+# entry here and differ only by data directory. Verified against
+# Brave Origin, whose key lives under `xdg:schema
+# chrome_libsecret_os_crypt_password_v2` and is reachable as `application=brave`.
 BROWSER_ROOTS = (
     ("chromium", "Chromium", Path.home() / ".config" / "chromium"),
     ("chrome", "Chrome", Path.home() / ".config" / "google-chrome"),
     ("brave", "Brave", Path.home() / ".config" / "BraveSoftware" / "Brave-Browser"),
+    ("brave", "Brave Beta", Path.home() / ".config" / "BraveSoftware" / "Brave-Browser-Beta"),
+    ("brave", "Brave Nightly", Path.home() / ".config" / "BraveSoftware" / "Brave-Browser-Nightly"),
+    # Brave Origin ships as its own product with its own data directory. It is
+    # the default browser on this machine, so it is listed before the older
+    # Brave-Browser tree when ranking equally-good sessions.
+    ("brave", "Brave Origin", Path.home() / ".config" / "BraveSoftware" / "Brave-Origin"),
+    ("brave", "Brave Origin Beta", Path.home() / ".config" / "BraveSoftware" / "Brave-Origin-Beta"),
+    ("chromium", "Chromium Snap", Path.home() / "snap" / "chromium" / "common" / "chromium"),
 )
 
 
@@ -248,8 +264,8 @@ def import_from_browser(
     names = {name for name, _ in pairs}
     if "__Secure-3PAPISID" not in names:
         raise BrowserAuthError(
-            "Chromium is not signed in to YouTube Music. "
-            "Open music.youtube.com, sign in, then try again."
+            "No signed-in YouTube Music session was found in your browsers. "
+            "Open music.youtube.com in your browser, sign in, then try again."
         )
     path = save_headers(headers_raw_from_cookies(pairs), dest)
     return path
@@ -263,7 +279,8 @@ def extract_youtube_cookies(
     candidates = databases if databases is not None else iter_cookie_databases()
     if not candidates:
         raise BrowserAuthError(
-            "No Chromium cookie database was found on this computer."
+            "No browser cookie database was found on this computer. "
+            "Looked in Chromium, Chrome, and the Brave family."
         )
 
     best: tuple[tuple[int, int, int, int], list[tuple[str, str]], CookieDatabase] | None = None
@@ -348,7 +365,7 @@ def os_crypt_password(application: str) -> bytes:
     )
     if shutil.which("secret-tool") is None:
         raise BrowserAuthError(
-            "secret-tool is missing. Install libsecret to read Chromium cookies, "
+            "secret-tool is missing. Install libsecret to read browser cookies, "
             "or paste request headers instead."
         )
     for command in lookups:
@@ -361,8 +378,8 @@ def os_crypt_password(application: str) -> bytes:
         if proc.returncode == 0 and proc.stdout:
             return proc.stdout.encode("utf-8")
     raise BrowserAuthError(
-        "Could not unlock the Chromium cookie key. "
-        "Sign in to Chromium once, then try again."
+        "Could not unlock the browser cookie key. "
+        "Sign in to that browser once, then try again."
     )
 
 

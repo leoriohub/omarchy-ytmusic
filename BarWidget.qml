@@ -393,7 +393,7 @@ BarWidget {
       ? root.ytmusic.title + (root.ytmusic.artist ? " — " + root.ytmusic.artist : "")
       : (root.ytmusic && !root.ytmusic.accountConnected
         ? "Set up Omarchy YouTube Music" : "Omarchy YouTube Music")
-    fixedWidth: root.vertical ? root.barSize : Style.bar.statusSlot
+    fixedWidth: root.vertical ? root.barSize : Style.bar.iconSlot
     fixedHeight: root.vertical ? Style.bar.statusSlot : -1
     clip: true
 
@@ -406,18 +406,18 @@ BarWidget {
 
       Item {
         id: barGlyph
-        width: Style.bar.iconCanvas
-        height: Style.bar.iconCanvas
+        width: Style.font.body * 1.06
+        height: Style.font.body * 1.06
         anchors.verticalCenter: parent.verticalCenter
 
         Image {
           id: barIcon
           anchors.centerIn: parent
-          width: Style.bar.iconFont
-          height: Style.bar.iconFont
+          width: Style.font.body * 1.06
+          height: Style.font.body * 1.06
           source: root.iconSource
-          sourceSize.width: Style.bar.iconFont * 2
-          sourceSize.height: Style.bar.iconFont * 2
+          sourceSize.width: Style.font.body * 2.12
+          sourceSize.height: Style.font.body * 2.12
           fillMode: Image.PreserveAspectFit
           visible: false
           layer.enabled: true
@@ -435,14 +435,14 @@ BarWidget {
     Item {
       visible: button.vertical
       anchors.centerIn: parent
-      width: Style.bar.iconCanvas
-      height: Style.bar.iconCanvas
+      width: Style.font.body * 1.06
+      height: Style.font.body * 1.06
 
       Image {
         id: verticalIcon
         anchors.centerIn: parent
-        width: Style.bar.iconFont
-        height: Style.bar.iconFont
+        width: Style.font.body * 1.06
+        height: Style.font.body * 1.06
         source: root.iconSource
         visible: false
         layer.enabled: true
